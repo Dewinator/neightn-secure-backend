@@ -1,0 +1,9 @@
+[phases.build]
+cmds = ["npm ci --only=production"]
+
+[phases.start]
+cmd = "npm start"
+
+[variables]
+NODE_ENV = "production"
+PORT = "3000"
