@@ -11,7 +11,284 @@ const port = process.env.PORT || 3000;
 const requestCounts = new Map();
 const RATE_LIMIT = 100;
 const WINDOW_MS = 60 * 1000;
+// Ergänzung für server.js - Automatische Workflow-Erstellung
 
+// Beispiel-Workflow Template (vereinfacht)
+const EXAMPLE_WORKFLOW_TEMPLATE = {
+  "name": "🎯 neightn Starter Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual_trigger",
+      "name": "🚀 Manueller Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "url": "https://api.eab-solutions.net/api/variables/USER_DEVICE_ID",
+        "options": {}
+      },
+      "id": "get_variables",
+      "name": "📋 Meine Variablen abrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": {
+    "🚀 Manueller Start": {
+      "main": [
+        [
+          {
+            "node": "📋 Meine Variablen abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+};
+
+// n8n API Helper Funktionen
+async function createWorkflowInN8n(userId, userN8nUrl, userN8nApiKey) {
+  try {
+    console.log(`🎯 Creating example workflow for user: ${userId}`);
+    
+    // Workflow Template anpassen für den User
+    const workflow = JSON.parse(JSON.stringify(EXAMPLE_WORKFLOW_TEMPLATE));
+    
+    // Device ID in allen URLs ersetzen
+    const replaceDeviceId = (obj) => {
+      if (typeof obj === 'string') {
+        return obj.replace('USER_DEVICE_ID', userId);
+      }
+      if (typeof obj === 'object' && obj !== null) {
+        if (Array.isArray(obj)) {
+          return obj.map(replaceDeviceId);
+        }
+        const result = {};
+        for (const [key, value] of Object.entries(obj)) {
+          result[key] = replaceDeviceId(value);
+        }
+        return result;
+      }
+      return obj;
+    };
+    
+    const personalizedWorkflow = replaceDeviceId(workflow);
+    
+    // n8n API aufrufen
+    const response = await fetch(`${userN8nUrl}/api/v1/workflows`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-N8N-API-KEY': userN8nApiKey
+      },
+      body: JSON.stringify(personalizedWorkflow)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`n8n API Error: ${response.status} - ${errorText}`);
+    }
+    
+    const createdWorkflow = await response.json();
+    console.log(`✅ Workflow created successfully: ${createdWorkflow.id}`);
+    
+    return {
+      success: true,
+      workflowId: createdWorkflow.id,
+      workflowName: personalizedWorkflow.name
+    };
+    
+  } catch (error) {
+    console.error(`❌ Failed to create workflow for user ${userId}:`, error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Willkommens-Variablen erstellen
+async function createWelcomeVariables(userId) {
+  try {
+    console.log(`📝 Creating welcome variables for user: ${userId}`);
+    
+    const welcomeVariables = [
+      {
+        key: 'WELCOME_MESSAGE',
+        value: 'Herzlich willkommen bei neightn! 🎉',
+        description: 'Automatisch erstellte Willkommensnachricht'
+      },
+      {
+        key: 'API_EXAMPLE',
+        value: 'Beispiel für API-Integration',
+        description: 'Diese Variable zeigt, wie du Daten zwischen App und n8n austauschen kannst'
+      },
+      {
+        key: 'SUBSCRIPTION_STARTED',
+        value: new Date().toISOString(),
+        description: 'Zeitstempel wann die Subscription gestartet wurde'
+      }
+    ];
+    
+    const results = [];
+    
+    for (const variable of welcomeVariables) {
+      try {
+        const data = await callSupabase('/rest/v1/global_variables', {
+          method: 'POST',
+          headers: {
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            key: variable.key,
+            value: variable.value,
+            description: variable.description,
+            variable_type: 'string',
+            updated_at: new Date().toISOString()
+          })
+        });
+        
+        results.push({
+          success: true,
+          variable: variable.key
+        });
+        
+        console.log(`✅ Created variable: ${variable.key}`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to create variable ${variable.key}:`, error.message);
+        results.push({
+          success: false,
+          variable: variable.key,
+          error: error.message
+        });
+      }
+    }
+    
+    return results;
+    
+  } catch (error) {
+    console.error(`❌ Failed to create welcome variables for user ${userId}:`, error.message);
+    return [];
+  }
+}
+
+// Erweiterte Subscription-Erstellung mit Workflow
+app.post('/api/subscription/:userId/with-workflow', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { plan = 'trial', n8nUrl, n8nApiKey } = req.body;
+    
+    if (!isValidDeviceId(userId)) {
+      return res.status(400).json({ 
+        error: 'Ungültige Device ID Format',
+        code: 'INVALID_DEVICE_ID'
+      });
+    }
+    
+    console.log(`🚀 Creating subscription with workflow for user: ${userId}`);
+    
+    // 1. Subscription erstellen
+    const subscriptionData = {
+      user_id: userId,
+      status: plan,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      started_at: new Date().toISOString(),
+      created_at: new Date().toISOString()
+    };
+    
+    const subscriptionResult = await callSupabase('/rest/v1/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(subscriptionData)
+    });
+    
+    console.log(`✅ Subscription created successfully`);
+    
+    // 2. Willkommens-Variablen erstellen
+    const variablesResult = await createWelcomeVariables(userId);
+    
+    // 3. n8n Workflow erstellen (optional)
+    let workflowResult = { success: false, error: 'n8n credentials not provided' };
+    
+    if (n8nUrl && n8nApiKey) {
+      workflowResult = await createWorkflowInN8n(userId, n8nUrl, n8nApiKey);
+    }
+    
+    // 4. Response zusammenstellen
+    res.json({ 
+      success: true, 
+      subscription: subscriptionResult[0] || subscriptionResult,
+      variables: variablesResult,
+      workflow: workflowResult,
+      message: 'Subscription mit Beispiel-Setup erfolgreich erstellt'
+    });
+    
+  } catch (error) {
+    console.error('❌ Fehler beim Erstellen der erweiterten Subscription:', error.message);
+    res.status(500).json({ 
+      error: 'Fehler beim Erstellen der Subscription mit Workflow',
+      code: 'SUBSCRIPTION_WORKFLOW_CREATE_ERROR',
+      details: error.message
+    });
+  }
+});
+
+// Workflow-Template abrufen
+app.get('/api/workflow-template/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!isValidDeviceId(userId)) {
+      return res.status(400).json({ 
+        error: 'Ungültige Device ID Format',
+        code: 'INVALID_DEVICE_ID'
+      });
+    }
+    
+    // Template personalisieren
+    const workflow = JSON.parse(JSON.stringify(EXAMPLE_WORKFLOW_TEMPLATE));
+    
+    // Device ID in URLs ersetzen
+    const workflowString = JSON.stringify(workflow);
+    const personalizedWorkflowString = workflowString.replace(/USER_DEVICE_ID/g, userId);
+    const personalizedWorkflow = JSON.parse(personalizedWorkflowString);
+    
+    res.json({
+      success: true,
+      workflow: personalizedWorkflow,
+      instructions: {
+        title: "So importierst du den Workflow in n8n:",
+        steps: [
+          "1. Öffne deine n8n-Instanz",
+          "2. Klicke auf 'Neuer Workflow'",
+          "3. Klicke auf die drei Punkte (⋯) → 'Import from JSON'",
+          "4. Kopiere den Workflow-Code unten",
+          "5. Füge ihn ein und klicke 'Import'",
+          "6. Speichere den Workflow",
+          "7. Klicke auf 'Execute Workflow' zum Testen"
+        ]
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Fehler beim Generieren des Workflow-Templates:', error.message);
+    res.status(500).json({ 
+      error: 'Fehler beim Generieren des Workflow-Templates',
+      code: 'WORKFLOW_TEMPLATE_ERROR'
+    });
+  }
+});
 function simpleRateLimit(req, res, next) {
   const ip = req.ip || req.connection.remoteAddress;
   const now = Date.now();
