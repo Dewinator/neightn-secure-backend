@@ -625,7 +625,64 @@ app.use((error, req, res, next) => {
     code: 'INTERNAL_ERROR'
   });
 });
-
+// User registrieren/erstellen
+app.post('/api/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!isValidDeviceId(userId)) {
+      return res.status(400).json({ 
+        error: 'Ungültige Device ID Format',
+        code: 'INVALID_DEVICE_ID'
+      });
+    }
+    
+    console.log(`👤 Registriere User: ${userId}`);
+    
+    // Prüfe ob User bereits existiert
+    const existingUsers = await callSupabase(`/rest/v1/users?id=eq.${userId}`);
+    
+    if (existingUsers.length > 0) {
+      console.log(`✅ User existiert bereits: ${userId}`);
+      return res.json({ 
+        success: true, 
+        user: existingUsers[0],
+        message: 'User bereits registriert'
+      });
+    }
+    
+    // Erstelle neuen User
+    const userData = {
+      id: userId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    const data = await callSupabase('/rest/v1/users', {
+      method: 'POST',
+      headers: {
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(userData)
+    });
+    
+    console.log(`✅ User erstellt: ${userId}`);
+    
+    res.json({ 
+      success: true, 
+      user: data[0] || data,
+      message: 'User erfolgreich registriert'
+    });
+    
+  } catch (error) {
+    console.error('❌ Fehler beim Registrieren des Users:', error.message);
+    res.status(500).json({ 
+      error: 'Fehler beim Registrieren des Users',
+      code: 'USER_REGISTRATION_ERROR',
+      details: error.message
+    });
+  }
+});
 // Server starten
 app.listen(port, () => {
   console.log(`🚀 neightn Backend läuft auf Port ${port}`);
