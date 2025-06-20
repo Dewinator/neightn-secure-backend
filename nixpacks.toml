@@ -1,8 +1,8 @@
 [phases.build]
-cmds = ["npm ci --only=production"]
+cmd = "docker build -t app ."
 
-[phases.start]
-cmd = "npm start"
+[phases.start]  
+cmd = "docker run --rm -p 3000:3000 app"
 
 [variables]
 NODE_ENV = "production"

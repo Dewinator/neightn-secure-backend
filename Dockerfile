@@ -1,25 +1,22 @@
-# Optimized Dockerfile für Coolify
 FROM node:18-alpine
 
-# Arbeitsverzeichnis
 WORKDIR /app
 
-# Nur package files zuerst (für besseres Caching)
+# Package files kopieren
 COPY package*.json ./
 
-# Dependencies installieren
-RUN npm ci --only=production && npm cache clean --force
+# Dependencies installieren  
+RUN npm ci --only=production
 
-# App Code kopieren
-COPY . .
+# App files kopieren
+COPY server.js healthcheck.js ./
 
-# Non-root user
-RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
-RUN chown -R nextjs:nodejs /app
-USER nextjs
-
-# Port
+# Port freigeben
 EXPOSE 3000
 
-# Start
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node healthcheck.js || exit 1
+
+# Starten
 CMD ["node", "server.js"]
