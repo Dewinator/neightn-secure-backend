@@ -395,16 +395,12 @@ app.get('/api/variables/:userId', async (req, res) => {
       });
     }
     
-    // RPC-Funktion aufrufen
-    let endpoint = `/rest/v1/rpc/get_user_variables`;
-    const params = new URLSearchParams();
-    params.append('p_user_id', userId);
+    // Direkt von der Tabelle lesen statt RPC zu verwenden
+    let endpoint = `/rest/v1/global_variables?user_id=eq.${userId}`;
     
     if (key) {
-      params.append('p_key', key);
+      endpoint += `&key=eq.${encodeURIComponent(key)}`;
     }
-    
-    endpoint += `?${params.toString()}`;
     
     console.log(`🔍 Fetching variables for user: ${userId}, key: ${key || 'all'}`);
     
