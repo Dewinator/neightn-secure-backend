@@ -586,11 +586,36 @@ app.delete('/api/variables/:userId/:key', async (req, res) => {
     
     console.log(`🗑️ Deleting variable: ${key} for user: ${userId}`);
     
-    const endpoint = `/rest/v1/global_variables?user_id=eq.${userId}&key=eq.${encodeURIComponent(key)}`;
+    // First check if the variable exists
+    const checkEndpoint = `/rest/v1/global_variables?user_id=eq.${userId}&key=eq.${encodeURIComponent(key)}`;
+    const existingData = await callSupabase(checkEndpoint);
     
-    await callSupabase(endpoint, {
-      method: 'DELETE'
+    if (!existingData || existingData.length === 0) {
+      console.log(`⚠️ Variable not found: ${key} for user: ${userId}`);
+      return res.status(404).json({
+        error: 'Variable nicht gefunden',
+        code: 'VARIABLE_NOT_FOUND'
+      });
+    }
+    
+    // Delete the variable
+    const deleteEndpoint = `/rest/v1/global_variables?user_id=eq.${userId}&key=eq.${encodeURIComponent(key)}`;
+    
+    const response = await fetch(`${SUPABASE_URL}${deleteEndpoint}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      }
     });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Supabase Delete Error: ${response.status} - ${errorText}`);
+      throw new Error(`Supabase API Fehler: ${response.status} - ${errorText}`);
+    }
     
     console.log(`✅ Variable deleted successfully`);
     
