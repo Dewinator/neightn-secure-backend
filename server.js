@@ -412,9 +412,22 @@ app.get('/api/variables/:userId', async (req, res) => {
     
     console.log(`✅ Got ${Array.isArray(data) ? data.length : 'unknown'} variables`);
     
+    // Transform the flat array into the expected format
+    const variables = {};
+    if (Array.isArray(data)) {
+      data.forEach(item => {
+        variables[item.key] = {
+          value: item.value,
+          type: item.variable_type || 'string'
+        };
+      });
+    }
+    
     res.json({
       success: true,
-      data: data,
+      data: {
+        variables: variables
+      },
       userId: userId
     });
     
